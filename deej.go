@@ -31,19 +31,17 @@ type Deej struct {
 	verbose     bool
 }
 
-// NewDeej creates a Deej instance
+// NewDeej creates a Deej instance.
 func NewDeej(logger *zap.SugaredLogger, verbose bool) (*Deej, error) {
 	logger = logger.Named("deej")
 
 	notifier, err := NewToastNotifier(logger)
 	if err != nil {
-		logger.Errorw("Failed to create ToastNotifier", "error", err)
 		return nil, fmt.Errorf("create new ToastNotifier: %w", err)
 	}
 
 	config, err := NewConfig(logger, notifier)
 	if err != nil {
-		logger.Errorw("Failed to create Config", "error", err)
 		return nil, fmt.Errorf("create new Config: %w", err)
 	}
 
@@ -57,7 +55,6 @@ func NewDeej(logger *zap.SugaredLogger, verbose bool) (*Deej, error) {
 
 	serial, err := NewSerialIO(d, logger)
 	if err != nil {
-		logger.Errorw("Failed to create SerialIO", "error", err)
 		return nil, fmt.Errorf("create new SerialIO: %w", err)
 	}
 
@@ -65,48 +62,42 @@ func NewDeej(logger *zap.SugaredLogger, verbose bool) (*Deej, error) {
 
 	sessionFinder, err := newSessionFinder(logger)
 	if err != nil {
-		logger.Errorw("Failed to create SessionFinder", "error", err)
 		return nil, fmt.Errorf("create new SessionFinder: %w", err)
 	}
 
 	sessions, err := newSessionMap(d, logger, sessionFinder)
 	if err != nil {
-		logger.Errorw("Failed to create sessionMap", "error", err)
 		return nil, fmt.Errorf("create new sessionMap: %w", err)
 	}
 
 	d.sessions = sessions
 
-	logger.Debug("Created deej instance")
+	logger.Debug("Created deej instance.")
 
 	return d, nil
 }
 
-// Initialize sets up components and starts to run in the background
+// Initialize sets up components and starts to run in the background.
 func (d *Deej) Initialize() error {
-	d.logger.Debug("Initializing")
+	d.logger.Debug("Initializing.")
 
-	// load the config for the first time
+	// Load the config for the first time.
 	if err := d.config.Load(); err != nil {
-		d.logger.Errorw("Failed to load config during initialization", "error", err)
 		return fmt.Errorf("load config during init: %w", err)
 	}
 
-	// initialize the session map
+	// Initialize the session map..
 	if err := d.sessions.initialize(); err != nil {
-		d.logger.Errorw("Failed to initialize session map", "error", err)
 		return fmt.Errorf("init session map: %w", err)
 	}
 
-	// decide whether to run with/without tray
+	// Decide whether to run with/without tray.
 	if _, noTraySet := os.LookupEnv(envNoTray); noTraySet {
-
 		d.logger.Debugw("Running without tray icon", "reason", "envvar set")
 
-		// run in main thread while waiting on ctrl+C
+		// Run in main thread while waiting on ctrl+C.
 		d.setupInterruptHandler()
 		d.run()
-
 	} else {
 		d.setupInterruptHandler()
 		d.initializeTray(d.run)
@@ -115,12 +106,12 @@ func (d *Deej) Initialize() error {
 	return nil
 }
 
-// SetVersion causes deej to add a version string to its tray menu if called before Initialize
+// SetVersion causes deej to add a version string to its tray menu if called before Initialize.
 func (d *Deej) SetVersion(version string) {
 	d.version = version
 }
 
-// Verbose returns a boolean indicating whether deej is running in verbose mode
+// Verbose returns a boolean indicating whether deej is running in verbose mode.
 func (d *Deej) Verbose() bool {
 	return d.verbose
 }

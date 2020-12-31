@@ -9,7 +9,7 @@ import (
 	"github.com/jfreymuth/pulse/proto"
 )
 
-// normal PulseAudio volume (100%)
+// Normal PulseAudio volume (100%).
 const maxVolume = 0x10000
 
 var errNoSuchProcess = errors.New("No such process")
@@ -35,14 +35,7 @@ type masterSession struct {
 	isOutput       bool
 }
 
-func newPASession(
-	logger *zap.SugaredLogger,
-	client *proto.Client,
-	sinkInputIndex uint32,
-	sinkInputChannels byte,
-	processName string,
-) *paSession {
-
+func newPASession(logger *zap.SugaredLogger, client *proto.Client, sinkInputIndex uint32, sinkInputChannels byte, processName string) *paSession {
 	s := &paSession{
 		client:            client,
 		sinkInputIndex:    sinkInputIndex,
@@ -53,21 +46,14 @@ func newPASession(
 	s.name = processName
 	s.humanReadableDesc = processName
 
-	// use a self-identifying session name e.g. deej.sessions.chrome
+	// Use a self-identifying session name e.g. deej.sessions.chrome.
 	s.logger = logger.Named(s.Key())
 	s.logger.Debugw(sessionCreationLogMessage, "session", s)
 
 	return s
 }
 
-func newMasterSession(
-	logger *zap.SugaredLogger,
-	client *proto.Client,
-	streamIndex uint32,
-	streamChannels byte,
-	isOutput bool,
-) *masterSession {
-
+func newMasterSession(logger *zap.SugaredLogger, client *proto.Client, streamIndex uint32, streamChannels byte, isOutput bool) *masterSession {
 	s := &masterSession{
 		client:         client,
 		streamIndex:    streamIndex,
@@ -116,17 +102,17 @@ func (s *paSession) SetVolume(v float32) error {
 	}
 
 	if err := s.client.Request(&request, nil); err != nil {
-		s.logger.Warnw("Failed to set session volume", "error", err)
+		s.logger.Warnw("Failed to set session volume.", "error", err)
 		return fmt.Errorf("adjust session volume: %w", err)
 	}
 
-	s.logger.Debugw("Adjusting session volume", "to", fmt.Sprintf("%.2f", v))
+	s.logger.Debugw("Adjusting session volume.", "to", fmt.Sprintf("%.2f", v))
 
 	return nil
 }
 
 func (s *paSession) Release() {
-	s.logger.Debug("Releasing audio session")
+	s.logger.Debug("Releasing audio session.")
 }
 
 func (s *paSession) String() string {
@@ -134,35 +120,26 @@ func (s *paSession) String() string {
 }
 
 func (s *masterSession) GetVolume() float32 {
-	var level float32
-
 	if s.isOutput {
-		request := proto.GetSinkInfo{
-			SinkIndex: s.streamIndex,
-		}
-		reply := proto.GetSinkInfoReply{}
+		request := &proto.GetSinkInfo{SinkIndex: s.streamIndex}
+		reply := &proto.GetSinkInfoReply{}
 
-		if err := s.client.Request(&request, &reply); err != nil {
-			s.logger.Warnw("Failed to get session volume", "error", err)
+		if err := s.client.Request(request, reply); err != nil {
+			s.logger.Warnw("Failed to get session volume.", "error", err)
 			return 0
 		}
 
-		level = parseChannelVolumes(reply.ChannelVolumes)
-	} else {
-		request := proto.GetSourceInfo{
-			SourceIndex: s.streamIndex,
-		}
-		reply := proto.GetSourceInfoReply{}
+		return parseChannelVolumes(reply.ChannelVolumes)
+	}
+	request := &proto.GetSourceInfo{SourceIndex: s.streamIndex}
+	reply := &proto.GetSourceInfoReply{}
 
-		if err := s.client.Request(&request, &reply); err != nil {
-			s.logger.Warnw("Failed to get session volume", "error", err)
-			return 0
-		}
-
-		level = parseChannelVolumes(reply.ChannelVolumes)
+	if err := s.client.Request(request, reply); err != nil {
+		s.logger.Warnw("Failed to get session volume.", "error", err)
+		return 0
 	}
 
-	return level
+	return parseChannelVolumes(reply.ChannelVolumes)
 }
 
 func (s *masterSession) SetVolume(v float32) error {
@@ -183,20 +160,20 @@ func (s *masterSession) SetVolume(v float32) error {
 	}
 
 	if err := s.client.Request(request, nil); err != nil {
-		s.logger.Warnw("Failed to set session volume",
+		s.logger.Warnw("Failed to set session volume.",
 			"error", err,
 			"volume", v)
 
 		return fmt.Errorf("adjust session volume: %w", err)
 	}
 
-	s.logger.Debugw("Adjusting session volume", "to", fmt.Sprintf("%.2f", v))
+	s.logger.Debugw("Adjusting session volume.", "to", fmt.Sprintf("%.2f", v))
 
 	return nil
 }
 
 func (s *masterSession) Release() {
-	s.logger.Debug("Releasing audio session")
+	s.logger.Debug("Releasing audio session.")
 }
 
 func (s *masterSession) String() string {
@@ -205,20 +182,16 @@ func (s *masterSession) String() string {
 
 func createChannelVolumes(channels byte, volume float32) []uint32 {
 	volumes := make([]uint32, channels)
-
 	for i := range volumes {
 		volumes[i] = uint32(volume * maxVolume)
 	}
-
 	return volumes
 }
 
 func parseChannelVolumes(volumes []uint32) float32 {
 	var level uint32
-
 	for _, volume := range volumes {
 		level += volume
 	}
-
 	return float32(level) / float32(len(volumes)) / float32(maxVolume)
 }

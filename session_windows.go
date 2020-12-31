@@ -11,8 +11,10 @@ import (
 	"go.uber.org/zap"
 )
 
-var errNoSuchProcess = errors.New("No such process")
-var errRefreshSessions = errors.New("Trigger session refresh")
+var (
+	errNoSuchProcess   = errors.New("No such process")
+	errRefreshSessions = errors.New("Trigger session refresh")
+)
 
 type wcaSession struct {
 	baseSession
@@ -36,14 +38,7 @@ type masterSession struct {
 	stale bool // when set to true, we should refresh sessions on the next call to SetVolume
 }
 
-func newWCASession(
-	logger *zap.SugaredLogger,
-	control *wca.IAudioSessionControl2,
-	volume *wca.ISimpleAudioVolume,
-	pid uint32,
-	eventCtx *ole.GUID,
-) (*wcaSession, error) {
-
+func newWCASession(logger *zap.SugaredLogger, control *wca.IAudioSessionControl2, volume *wca.ISimpleAudioVolume, pid uint32, eventCtx *ole.GUID) (*wcaSession, error) {
 	s := &wcaSession{
 		control:  control,
 		volume:   volume,
@@ -51,14 +46,13 @@ func newWCASession(
 		eventCtx: eventCtx,
 	}
 
-	// special treatment for system sounds session
+	// Special treatment for system sounds session.
 	if pid == 0 {
 		s.system = true
 		s.name = systemSessionName
 		s.humanReadableDesc = "system sounds"
 	} else {
-
-		// find our session's process name
+		// Find our session's process name.
 		process, err := ps.FindProcess(int(pid))
 		if err != nil {
 			logger.Warnw("Failed to find process name by ID", "pid", pid, "error", err)
@@ -67,7 +61,7 @@ func newWCASession(
 			return nil, fmt.Errorf("find process name by pid: %w", err)
 		}
 
-		// this PID may be invalid - this means the process has already been
+		// This PID may be invalid - this means the process has already been
 		// closed and we shouldn't create a session for it.
 		if process == nil {
 			logger.Debugw("Process already exited, not creating audio session", "pid", pid)
@@ -79,21 +73,14 @@ func newWCASession(
 		s.humanReadableDesc = fmt.Sprintf("%s (pid %d)", s.processName, s.pid)
 	}
 
-	// use a self-identifying session name e.g. deej.sessions.chrome
+	// Use a self-identifying session name e.g. deej.sessions.chrome.
 	s.logger = logger.Named(strings.TrimSuffix(s.Key(), ".exe"))
 	s.logger.Debugw(sessionCreationLogMessage, "session", s)
 
 	return s, nil
 }
 
-func newMasterSession(
-	logger *zap.SugaredLogger,
-	volume *wca.IAudioEndpointVolume,
-	eventCtx *ole.GUID,
-	key string,
-	loggerKey string,
-) (*masterSession, error) {
-
+func newMasterSession(logger *zap.SugaredLogger, volume *wca.IAudioEndpointVolume, eventCtx *ole.GUID, key, loggerKey string) (*masterSession, error) {
 	s := &masterSession{
 		volume:   volume,
 		eventCtx: eventCtx,
@@ -138,13 +125,13 @@ func (s *wcaSession) SetVolume(v float32) error {
 		return errRefreshSessions
 	}
 
-	s.logger.Debugw("Adjusting session volume", "to", fmt.Sprintf("%.2f", v))
+	s.logger.Debugw("Adjusting session volume.", "to", fmt.Sprintf("%.2f", v))
 
 	return nil
 }
 
 func (s *wcaSession) Release() {
-	s.logger.Debug("Releasing audio session")
+	s.logger.Debug("Releasing audio session.")
 
 	s.volume.Release()
 	s.control.Release()
@@ -158,7 +145,7 @@ func (s *masterSession) GetVolume() float32 {
 	var level float32
 
 	if err := s.volume.GetMasterVolumeLevelScalar(&level); err != nil {
-		s.logger.Warnw("Failed to get session volume", "error", err)
+		s.logger.Warnw("Failed to get session volume.", "error", err)
 	}
 
 	return level
@@ -166,25 +153,25 @@ func (s *masterSession) GetVolume() float32 {
 
 func (s *masterSession) SetVolume(v float32) error {
 	if s.stale {
-		s.logger.Warnw("Session expired because default device has changed, triggering session refresh")
+		s.logger.Warnw("Session expired because default device has changed, triggering session refresh.")
 		return errRefreshSessions
 	}
 
 	if err := s.volume.SetMasterVolumeLevelScalar(v, s.eventCtx); err != nil {
-		s.logger.Warnw("Failed to set session volume",
+		s.logger.Warnw("Failed to set session volume.",
 			"error", err,
 			"volume", v)
 
 		return fmt.Errorf("adjust session volume: %w", err)
 	}
 
-	s.logger.Debugw("Adjusting session volume", "to", fmt.Sprintf("%.2f", v))
+	s.logger.Debugw("Adjusting session volume.", "to", fmt.Sprintf("%.2f", v))
 
 	return nil
 }
 
 func (s *masterSession) Release() {
-	s.logger.Debug("Releasing audio session")
+	s.logger.Debug("Releasing audio session.")
 
 	s.volume.Release()
 }

@@ -51,36 +51,32 @@ func NewSerialIO(deej *Deej, logger *zap.SugaredLogger) (*SerialIO, error) {
 	sio := &SerialIO{
 		deej:                deej,
 		logger:              logger,
-		stopChannel:         make(chan bool),
+		stopChannel:         make(chan bool, 1),
 		connected:           false,
 		conn:                nil,
 		sliderMoveConsumers: []chan SliderMoveEvent{},
 	}
 
-	logger.Debug("Created serial i/o instance")
+	logger.Debug("Created serial i/o instance.")
 
-	// respond to config changes
+	// Respond to config changes.
 	sio.setupOnConfigReload()
 
 	return sio, nil
 }
 
-// Start attempts to connect to our arduino chip
+// Start attempts to connect to our arduino chip.
 func (sio *SerialIO) Start() error {
-
-	// don't allow multiple concurrent connections
+	// Don't allow multiple concurrent connections.
 	if sio.connected {
-		sio.logger.Warn("Already connected, can't start another without closing first")
+		sio.logger.Warn("Already connected, can't start another without closing first.")
 		return errors.New("serial: connection already active")
 	}
 
-	// set minimum read size according to platform (0 for windows, 1 for linux)
+	// Set minimum read size according to platform (0 for windows, 1 for linux)
 	// this prevents a rare bug on windows where serial reads get congested,
-	// resulting in significant lag
-	minimumReadSize := 0
-	if util.Linux() {
-		minimumReadSize = 1
-	}
+	// resulting in significant lag.
+	minimumReadSize := util.MinimumSerialReadSize
 
 	sio.connOptions = serial.OpenOptions{
 		PortName:        sio.deej.config.ConnectionInfo.COMPort,
@@ -90,7 +86,7 @@ func (sio *SerialIO) Start() error {
 		MinimumReadSize: uint(minimumReadSize),
 	}
 
-	sio.logger.Debugw("Attempting serial connection",
+	sio.logger.Debugw("Attempting serial connection.",
 		"comPort", sio.connOptions.PortName,
 		"baudRate", sio.connOptions.BaudRate,
 		"minReadSize", minimumReadSize)
@@ -98,15 +94,14 @@ func (sio *SerialIO) Start() error {
 	var err error
 	sio.conn, err = serial.Open(sio.connOptions)
 	if err != nil {
-
-		// might need a user notification here, TBD
-		sio.logger.Warnw("Failed to open serial connection", "error", err)
+		// Might need a user notification here, TBD.
+		sio.logger.Warnw("Failed to open serial connection.", "error", err)
 		return fmt.Errorf("open serial connection: %w", err)
 	}
 
 	namedLogger := sio.logger.Named(strings.ToLower(sio.connOptions.PortName))
 
-	namedLogger.Infow("Connected", "conn", sio.conn)
+	namedLogger.Infow("Connected.", "conn", sio.conn)
 	sio.connected = true
 
 	// read lines or await a stop
@@ -127,22 +122,21 @@ func (sio *SerialIO) Start() error {
 	return nil
 }
 
-// Stop signals us to shut down our serial connection, if one is active
+// Stop signals us to shut down our serial connection, if one is active.
 func (sio *SerialIO) Stop() {
 	if sio.connected {
-		sio.logger.Debug("Shutting down serial connection")
+		sio.logger.Debug("Shutting down serial connection.")
 		sio.stopChannel <- true
 	} else {
-		sio.logger.Debug("Not currently connected, nothing to stop")
+		sio.logger.Debug("Not currently connected, nothing to stop.")
 	}
 }
 
 // SubscribeToSliderMoveEvents returns an unbuffered channel that receives
-// a sliderMoveEvent struct every time a slider moves
+// a sliderMoveEvent struct every time a slider moves.
 func (sio *SerialIO) SubscribeToSliderMoveEvents() chan SliderMoveEvent {
 	ch := make(chan SliderMoveEvent)
 	sio.sliderMoveConsumers = append(sio.sliderMoveConsumers, ch)
-
 	return ch
 }
 
@@ -155,31 +149,30 @@ func (sio *SerialIO) setupOnConfigReload() {
 		for {
 			select {
 			case <-configReloadedChannel:
-
-				// make any config reload unset our slider number to ensure process volumes are being re-set
+				// Make any config reload unset our slider number to ensure process volumes are being re-set
 				// (the next read line will emit SliderMoveEvent instances for all sliders)\
 				// this needs to happen after a small delay, because the session map will also re-acquire sessions
 				// whenever the config file is reloaded, and we don't want it to receive these move events while the map
-				// is still cleared. this is kind of ugly, but shouldn't cause any issues
+				// is still cleared. this is kind of ugly, but shouldn't cause any issues.
 				go func() {
 					<-time.After(stopDelay)
 					sio.lastKnownNumSliders = 0
 				}()
 
-				// if connection params have changed, attempt to stop and start the connection
+				// If connection params have changed, attempt to stop and start the connection.
 				if sio.deej.config.ConnectionInfo.COMPort != sio.connOptions.PortName ||
 					uint(sio.deej.config.ConnectionInfo.BaudRate) != sio.connOptions.BaudRate {
 
-					sio.logger.Info("Detected change in connection parameters, attempting to renew connection")
+					sio.logger.Info("Detected change in connection parameters, attempting to renew connection.")
 					sio.Stop()
 
-					// let the connection close
+					// Let the connection close.
 					<-time.After(stopDelay)
 
 					if err := sio.Start(); err != nil {
-						sio.logger.Warnw("Failed to renew connection after parameter change", "error", err)
+						sio.logger.Warnw("Failed to renew connection after parameter change.", "error", err)
 					} else {
-						sio.logger.Debug("Renewed connection successfully")
+						sio.logger.Debug("Renewed connection successfully.")
 					}
 				}
 			}
@@ -189,9 +182,9 @@ func (sio *SerialIO) setupOnConfigReload() {
 
 func (sio *SerialIO) close(logger *zap.SugaredLogger) {
 	if err := sio.conn.Close(); err != nil {
-		logger.Warnw("Failed to close serial connection", "error", err)
+		logger.Warnw("Failed to close serial connection.", "error", err)
 	} else {
-		logger.Debug("Serial connection closed")
+		logger.Debug("Serial connection closed.")
 	}
 
 	sio.conn = nil
@@ -205,12 +198,11 @@ func (sio *SerialIO) readLine(logger *zap.SugaredLogger, reader *bufio.Reader) c
 		for {
 			line, err := reader.ReadString('\n')
 			if err != nil {
-
 				if sio.deej.Verbose() {
-					logger.Warnw("Failed to read line from serial", "error", err, "line", line)
+					logger.Warnw("Failed to read line from serial.", "error", err, "line", line)
 				}
 
-				// just ignore the line, the read loop will stop after this
+				// Just ignore the line, the read loop will stop after this.
 				return
 			}
 
@@ -218,7 +210,7 @@ func (sio *SerialIO) readLine(logger *zap.SugaredLogger, reader *bufio.Reader) c
 				logger.Debugw("Read new line", "line", line)
 			}
 
-			// deliver the line to the channel
+			// Deliver the line to the channel.
 			ch <- line
 		}
 	}()
@@ -227,51 +219,51 @@ func (sio *SerialIO) readLine(logger *zap.SugaredLogger, reader *bufio.Reader) c
 }
 
 func (sio *SerialIO) handleLine(logger *zap.SugaredLogger, line string) {
-
-	// this function receives an unsanitized line which is guaranteed to end with LF,
+	// This function receives an unsanitized line which is guaranteed to end with LF,
 	// but most lines will end with CRLF. it may also have garbage instead of
-	// deej-formatted values, so we must check for that! just ignore bad ones
+	// deej-formatted values, so we must check for that! just ignore bad ones.
 	if !expectedLinePattern.MatchString(line) {
 		return
 	}
 
-	// trim the suffix
+	// Trim the suffix.
 	line = strings.TrimSuffix(line, "\r\n")
 
-	// split on pipe (|), this gives a slice of numerical strings between "0" and "1023"
+	// Split on pipe (|), this gives a slice of numerical strings between "0" and "1023".
 	splitLine := strings.Split(line, "|")
 	numSliders := len(splitLine)
 
-	// update our slider count, if needed - this will send slider move events for all
+	// Update our slider count, if needed - this will send slider move events for all.
 	if numSliders != sio.lastKnownNumSliders {
-		logger.Infow("Detected sliders", "amount", numSliders)
+		logger.Infow("Detected sliders.", "amount", numSliders)
 		sio.lastKnownNumSliders = numSliders
 		sio.currentSliderPercentValues = make([]float32, numSliders)
 
-		// reset everything to be an impossible value to force the slider move event later
+		// Reset everything to be an impossible value to force the slider move event later.
 		for idx := range sio.currentSliderPercentValues {
 			sio.currentSliderPercentValues[idx] = -1.0
 		}
 	}
 
-	// for each slider:
-	moveEvents := []SliderMoveEvent{}
+	var moveEvents []SliderMoveEvent
+
+	// For each slider:
 	for sliderIdx, stringValue := range splitLine {
 
-		// convert string values to integers ("1023" -> 1023)
+		// Convert string values to integers ("1023" -> 1023).
 		number, _ := strconv.Atoi(stringValue)
 
-		// turns out the first line could come out dirty sometimes (i.e. "4558|925|41|643|220")
-		// so let's check the first number for correctness just in case
+		// Turns out the first line could come out dirty sometimes (i.e. "4558|925|41|643|220")
+		// so let's check the first number for correctness just in case.
 		if sliderIdx == 0 && number > 1023 {
-			sio.logger.Debugw("Got malformed line from serial, ignoring", "line", line)
+			sio.logger.Debugw("Got malformed line from serial, ignoring.", "line", line)
 			return
 		}
 
-		// map the value from raw to a "dirty" float between 0 and 1 (e.g. 0.15451...)
+		// Map the value from raw to a "dirty" float between 0 and 1 (e.g. 0.15451).
 		dirtyFloat := float32(number) / 1023.0
 
-		// normalize it to an actual volume scalar between 0.0 and 1.0 with 2 points of precision
+		// Normalize it to an actual volume scalar between 0.0 and 1.0 with 2 points of precision.
 		normalizedScalar := util.NormalizeScalar(dirtyFloat)
 
 		// if sliders are inverted, take the complement of 1.0
@@ -279,10 +271,9 @@ func (sio *SerialIO) handleLine(logger *zap.SugaredLogger, line string) {
 			normalizedScalar = 1 - normalizedScalar
 		}
 
-		// check if it changes the desired state (could just be a jumpy raw slider value)
+		// Check if it changes the desired state (could just be a jumpy raw slider value).
 		if util.SignificantlyDifferent(sio.currentSliderPercentValues[sliderIdx], normalizedScalar, sio.deej.config.NoiseReductionLevel) {
-
-			// if it does, update the saved value and create a move event
+			// If it does, update the saved value and create a move event.
 			sio.currentSliderPercentValues[sliderIdx] = normalizedScalar
 
 			moveEvents = append(moveEvents, SliderMoveEvent{
@@ -291,12 +282,12 @@ func (sio *SerialIO) handleLine(logger *zap.SugaredLogger, line string) {
 			})
 
 			if sio.deej.Verbose() {
-				logger.Debugw("Slider moved", "event", moveEvents[len(moveEvents)-1])
+				logger.Debugw("Slider moved.", "event", moveEvents[len(moveEvents)-1])
 			}
 		}
 	}
 
-	// deliver move events if there are any, towards all potential consumers
+	// Deliver move events if there are any, towards all potential consumers.
 	if len(moveEvents) > 0 {
 		for _, consumer := range sio.sliderMoveConsumers {
 			for _, moveEvent := range moveEvents {

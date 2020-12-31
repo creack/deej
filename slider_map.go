@@ -10,13 +10,12 @@ import (
 
 type sliderMap struct {
 	m    map[int][]string
-	lock sync.Locker
+	lock sync.Mutex
 }
 
 func newSliderMap() *sliderMap {
 	return &sliderMap{
-		m:    make(map[int][]string),
-		lock: &sync.Mutex{},
+		m: map[int][]string{},
 	}
 }
 
@@ -32,17 +31,14 @@ func sliderMapFromConfigs(userMapping map[string][]string, internalMapping map[s
 		}))
 	}
 
-	// add targets from internal configs, ignoring duplicate or empty values
+	// Add targets from internal configs, ignoring duplicate or empty values.
 	for sliderIdxString, targets := range internalMapping {
 		sliderIdx, _ := strconv.Atoi(sliderIdxString)
 
-		existingTargets, ok := resultMap.get(sliderIdx)
-		if !ok {
-			existingTargets = []string{}
-		}
+		existingTargets, _ := resultMap.get(sliderIdx)
 
 		filteredTargets := funk.FilterString(targets, func(s string) bool {
-			return (!funk.ContainsString(existingTargets, s)) && s != ""
+			return !funk.ContainsString(existingTargets, s) && s != ""
 		})
 
 		existingTargets = append(existingTargets, filteredTargets...)

@@ -14,7 +14,7 @@ import (
 )
 
 // CanonicalConfig provides application-wide access to configuration fields,
-// as well as loading/file watching logic for deej's configuration file
+// as well as loading/file watching logic for deej's configuration file.
 type CanonicalConfig struct {
 	SliderMapping *sliderMap
 
@@ -58,13 +58,12 @@ const (
 	defaultBaudRate = 9600
 )
 
-// has to be defined as a non-constant because we're using path.Join
+// Has to be defined as a non-constant because we're using path.Join.
 var internalConfigPath = path.Join(".", logDirectory)
 
 var defaultSliderMapping = func() *sliderMap {
 	emptyMap := newSliderMap()
 	emptyMap.set(0, []string{masterSessionName})
-
 	return emptyMap
 }()
 
@@ -75,8 +74,7 @@ func NewConfig(logger *zap.SugaredLogger, notifier Notifier) (*CanonicalConfig, 
 	cc := &CanonicalConfig{
 		logger:             logger,
 		notifier:           notifier,
-		reloadConsumers:    []chan bool{},
-		stopWatcherChannel: make(chan bool),
+		stopWatcherChannel: make(chan bool, 1),
 	}
 
 	// distinguish between the user-provided config (config.yaml) and the internal config (logs/preferences.yaml)
@@ -98,18 +96,18 @@ func NewConfig(logger *zap.SugaredLogger, notifier Notifier) (*CanonicalConfig, 
 	cc.userConfig = userConfig
 	cc.internalConfig = internalConfig
 
-	logger.Debug("Created config instance")
+	logger.Debug("Created config instance.")
 
 	return cc, nil
 }
 
 // Load reads deej's config files from disk and tries to parse them
 func (cc *CanonicalConfig) Load() error {
-	cc.logger.Debugw("Loading config", "path", userConfigFilepath)
+	cc.logger.Debugw("Loading config.", "path", userConfigFilepath)
 
 	// make sure it exists
 	if !util.FileExists(userConfigFilepath) {
-		cc.logger.Warnw("Config file not found", "path", userConfigFilepath)
+		cc.logger.Warnw("Config file not found.", "path", userConfigFilepath)
 		cc.notifier.Notify("Can't find configuration!",
 			fmt.Sprintf("%s must be in the same directory as deej. Please re-launch", userConfigFilepath))
 
@@ -142,8 +140,8 @@ func (cc *CanonicalConfig) Load() error {
 		return fmt.Errorf("populate config fields: %w", err)
 	}
 
-	cc.logger.Info("Loaded config successfully")
-	cc.logger.Infow("Config values",
+	cc.logger.Info("Loaded config successfully.")
+	cc.logger.Infow("Config values.",
 		"sliderMapping", cc.SliderMapping,
 		"connectionInfo", cc.ConnectionInfo,
 		"invertSliders", cc.InvertSliders)
@@ -155,50 +153,46 @@ func (cc *CanonicalConfig) Load() error {
 func (cc *CanonicalConfig) SubscribeToChanges() chan bool {
 	c := make(chan bool)
 	cc.reloadConsumers = append(cc.reloadConsumers, c)
-
 	return c
 }
 
 // WatchConfigFileChanges starts watching for configuration file changes
 // and attempts reloading the config when they happen
 func (cc *CanonicalConfig) WatchConfigFileChanges() {
-	cc.logger.Debugw("Starting to watch user config file for changes", "path", userConfigFilepath)
+	cc.logger.Debugw("Starting to watch user config file for changes.", "path", userConfigFilepath)
 
 	const (
-		minTimeBetweenReloadAttempts = time.Millisecond * 500
-		delayBetweenEventAndReload   = time.Millisecond * 50
+		minTimeBetweenReloadAttempts = 500 * time.Millisecond
+		delayBetweenEventAndReload   = 50 * time.Millisecond
 	)
 
 	lastAttemptedReload := time.Now()
 
-	// establish watch using viper as opposed to doing it ourselves, though our internal cooldown is still required
+	// Establish watch using viper as opposed to doing it ourselves, though our internal cooldown is still required.
 	cc.userConfig.WatchConfig()
 	cc.userConfig.OnConfigChange(func(event fsnotify.Event) {
-
-		// when we get a write event...
+		// When we get a write event.
 		if event.Op&fsnotify.Write == fsnotify.Write {
-
 			now := time.Now()
 
-			// ... check if it's not a duplicate (many editors will write to a file twice)
+			// Check if it's not a duplicate (many editors will write to a file twice).
 			if lastAttemptedReload.Add(minTimeBetweenReloadAttempts).Before(now) {
+				// And attempt reload if appropriate.
+				cc.logger.Debugw("Config file modified, attempting reload.", "event", event)
 
-				// and attempt reload if appropriate
-				cc.logger.Debugw("Config file modified, attempting reload", "event", event)
-
-				// wait a bit to let the editor actually flush the new file contents to disk
+				// Wait a bit to let the editor actually flush the new file contents to disk.
 				<-time.After(delayBetweenEventAndReload)
 
 				if err := cc.Load(); err != nil {
-					cc.logger.Warnw("Failed to reload config file", "error", err)
+					cc.logger.Warnw("Failed to reload config file.", "error", err)
 				} else {
-					cc.logger.Info("Reloaded config successfully")
+					cc.logger.Info("Reloaded config successfully.")
 					cc.notifier.Notify("Configuration reloaded!", "Your changes have been applied.")
 
 					cc.onConfigReloaded()
 				}
 
-				// don't forget to update the time
+				// Don't forget to update the time.
 				lastAttemptedReload = now
 			}
 		}
@@ -206,7 +200,7 @@ func (cc *CanonicalConfig) WatchConfigFileChanges() {
 
 	// wait till they stop us
 	<-cc.stopWatcherChannel
-	cc.logger.Debug("Stopping user config file watcher")
+	cc.logger.Debug("Stopping user config file watcher.")
 	cc.userConfig.OnConfigChange(nil)
 }
 
@@ -228,7 +222,7 @@ func (cc *CanonicalConfig) populateFromVipers() error {
 
 	cc.ConnectionInfo.BaudRate = cc.userConfig.GetInt(configKeyBaudRate)
 	if cc.ConnectionInfo.BaudRate <= 0 {
-		cc.logger.Warnw("Invalid baud rate specified, using default value",
+		cc.logger.Warnw("Invalid baud rate specified, using default value.",
 			"key", configKeyBaudRate,
 			"invalidValue", cc.ConnectionInfo.BaudRate,
 			"defaultValue", defaultBaudRate)
@@ -239,13 +233,13 @@ func (cc *CanonicalConfig) populateFromVipers() error {
 	cc.InvertSliders = cc.userConfig.GetBool(configKeyInvertSliders)
 	cc.NoiseReductionLevel = cc.userConfig.GetString(configKeyNoiseReductionLevel)
 
-	cc.logger.Debug("Populated config fields from vipers")
+	cc.logger.Debug("Populated config fields from vipers.")
 
 	return nil
 }
 
 func (cc *CanonicalConfig) onConfigReloaded() {
-	cc.logger.Debug("Notifying consumers about configuration reload")
+	cc.logger.Debug("Notifying consumers about configuration reload.")
 
 	for _, consumer := range cc.reloadConsumers {
 		consumer <- true
